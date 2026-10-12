@@ -5,40 +5,42 @@ on:
     branches:
       - "**"
     tags:
-      - v*
+      - "v*"
+
   pull_request:
     branches:
       - "**"
+
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   android:
+    name: Build Levi Launcher
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: "recursive"
+          submodules: recursive
 
       - name: Prepare google-services.json
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p app
 
           if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
-            printf '%s' "${GOOGLE_SERVICES_JSON_BASE64}" | base64 --decode > app/google-services.json
-            exit 0
-          fi
-
-          # No real Firebase project configured - write a placeholder just
-          # so the google-services Gradle plugin has a file to parse. The
-          # Crashlytics symbol-upload tasks (which would otherwise fail
-          # against a fake project) are excluded in the build step below,
-          # so this is enough to produce a working APK without any secret.
-          cat > app/google-services.json <<'JSON'
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" \
+              | base64 --decode > app/google-services.json
+          else
+            cat > app/google-services.json <<'JSON'
           {
             "project_info": {
               "project_number": "000000000000",
@@ -69,6 +71,7 @@ jobs:
             "configuration_version": "1"
           }
           JSON
+          fi
 
       - name: Setup Java JDK
         uses: actions/setup-java@v4
@@ -77,13 +80,12 @@ jobs:
           distribution: temurin
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Licenses
-        run: yes | sdkmanager --licenses
-
-      - name: Install Build Tools 35.0.0
-        run: sdkmanager "build-tools;35.0.0"
+        uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: 15859902
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: true
+          packages: "platform-tools build-tools;35.0.0"
 
       - name: Setup Xmake
         uses: xmake-io/github-action-setup-xmake@v1
@@ -104,26 +106,60 @@ jobs:
       - name: Inject API Keys
         env:
           CF_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
-        run: echo "curseforge.api_key=${CF_API_KEY}" >> local.properties
+        shell: bash
+        run: |
+          touch local.properties
+          printf 'curseforge.api_key=%s\n' "$CF_API_KEY" \
+            >> local.properties
 
-      - name: Build Debug and Unsigned Release APKs
+      - name: Build Debug and Release APKs
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m"
-        run: >
-          ./gradlew assembleDebug assembleRelease
-          -x uploadCrashlyticsSymbolFileDebug
-          -x uploadCrashlyticsSymbolFileRelease
-          --stacktrace
+        run: |
+          ./gradlew --no-daemon \
+            assembleDebug \
+            assembleRelease \
+            -x uploadCrashlyticsSymbolFileDebug \
+            -x uploadCrashlyticsSymbolFileRelease \
+            --stacktrace
 
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: LeviLauncher-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+      - name: Rename APKs
+        shell: bash
+        run: |
+          set -euo pipefail
 
-      - name: Upload Unsigned Release APK
-        uses: actions/upload-artifact@v4.6.2
+          mkdir -p release-apks
+
+          DEBUG_APK=$(find app/build/outputs/apk/debug \
+            -maxdepth 1 -type f -name '*.apk' -print -quit)
+
+          RELEASE_APK=$(find app/build/outputs/apk/release \
+            -maxdepth 1 -type f -name '*.apk' -print -quit)
+
+          if [ -z "$DEBUG_APK" ]; then
+            echo "Debug APK was not generated."
+            exit 1
+          fi
+
+          if [ -z "$RELEASE_APK" ]; then
+            echo "Release APK was not generated."
+            exit 1
+          fi
+
+          cp "$DEBUG_APK" release-apks/LeviLauncher-debug.apk
+          cp "$RELEASE_APK" release-apks/LeviLauncher-release.apk
+
+          ls -lh release-apks/
+
+      # Create a GitHub Release only when a v* tag is pushed.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
         with:
-          name: LeviLauncher-release-unsigned-apk
-          path: app/build/outputs/apk/release/*-unsigned.apk
-          
+          name: Levi Launcher ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            release-apks/LeviLauncher-debug.apk
+            release-apks/LeviLauncher-release.apk
