@@ -151,13 +151,23 @@ jobs:
 
           ls -lh release-apks/
 
-      # Create a GitHub Release only when a v* tag is pushed.
+      - name: Upload APKs as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LeviLauncher-APKs
+          path: release-apks/*.apk
+          if-no-files-found: error
+          compression-level: 0
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v2
         with:
-          name: Levi Launcher ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && format('Levi Launcher {0}', github.ref_name) || 'Levi Launcher Latest' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+          target_commitish: ${{ github.sha }}
+          prerelease: false
+          make_latest: ${{ startsWith(github.ref, 'refs/tags/v') && 'true' || 'false' }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
