@@ -6,7 +6,7 @@
 
 ![Banner](https://camo.githubusercontent.com/bd7bd77cb422a267057d9863095b239b096d4f46dc831a37b45867a9acfad697/68747470733a2f2f63617073756c652d72656e6465722e76657263656c2e6170702f6170693f747970653d576176696e6726636f6c6f723d74696d654772616469656e74266865696768743d33303026616e696d6174696f6e3d66616465496e2673656374696f6e3d68656164657226746578743d4c6576694d4326666f6e7453697a653d313230)
 
-**A lightweight Android launcher for Minecraft: Bedrock Edition**
+**A lightweight Android launcher for Minecraft: Bedrock Edition — LEVI LAUNCHER LICENSE CHECK REMOVE**
 
 [![GitHub Release](https://img.shields.io/github/v/release/LiteLDev/LeviLaunchroid?style=flat-square&color=blue)](https://github.com/LiteLDev/LeviLaunchroid/releases)
 [![License: Apache 2.0](https://img.shields.io/github/license/LiteLDev/LeviLaunchroid)](https://github.com/LiteLDev/LeviLaunchroid/blob/main/LICENSE)
@@ -24,6 +24,8 @@
 LeviLauncher is a lightweight, open-source Android launcher specifically designed for legitimate players of Minecraft: Bedrock Edition (MCBE). It provides a flexible and user-friendly alternative to the standard Google Play installation, allowing you to manage multiple game versions and extend functionality with external modules.
 
 LeviLauncher enables you to import your official Minecraft APK and run it directly without requiring system installation. The launcher supports loading external native modules to enhance gameplay, provides robust multi-version management with complete isolation between installations, and includes built-in tools for managing resource packs and worlds. Whether you're looking to organize different game versions, test modifications, or optimize your gaming experience, LeviLauncher offers the flexibility you need.
+
+### This Modified Levi launcher Lets you use both Paid and crack Minecraft it also support patch but its still not tested 
 
 ### Key Features
 
@@ -43,7 +45,7 @@ Before installing LeviLauncher, ensure your device meets the following minimum s
 - **Device Architecture:** ARM64 (v8a)
 - **RAM:** Minimum 1 GB available RAM (2 GB or more recommended)
 - **Storage:** At least 2 GB of available storage for Minecraft and game data
-- **License Requirement:** You must own a licensed copy of Minecraft Bedrock Edition purchased from Google Play
+- **License Requirement:** You must own a licensed copy of Minecraft Bedrock Edition purchased from Google Play Or Download a crack or Minecraft apk using this modded levi launcher 
 
 > **Note:** For optimal performance and stability, we recommend Android 9.0 or higher with at least 3 GB of available RAM and 5 GB of free storage.
 
@@ -64,7 +66,7 @@ Before proceeding with LeviLauncher installation, ensure that you have the offic
 5. Grant the necessary permissions when prompted during installation
 6. Once installed, open LeviLauncher from your application drawer
 
-> **Important:** LeviLauncher requires a legitimate, licensed copy of Minecraft Bedrock Edition. Do not use this launcher with pirated or unauthorized versions of the game. Ensure your Minecraft license is valid and properly linked to your Microsoft account.
+> **Important:** LeviLauncher requires a legitimate, licensed copy of Minecraft Bedrock Edition. Do not use this launcher with pirated or unauthorized versions of the game. Ensure your Minecraft license is valid and properly linked to your Microsoft account. As said before This levi launcher license check is removed
 
 ---
 
@@ -145,7 +147,7 @@ LeviLauncher is designed for legitimate players of Minecraft Bedrock Edition. Pl
 
 ### Permitted Uses
 
-- Modify LeviLauncher for personal gameplay and to test new features
+- Modify LeviLauncher for personal gameplay and to test new features — Im not following this
 - Create educational content (videos, tutorials, blog posts) showcasing LeviLauncher's capabilities
 - Fork the repository for learning purposes or to create derivative projects, provided you comply with the Apache License 2.0
 - Share your modified versions with others as long as you comply with the Apache License 2.0 terms
