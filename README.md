@@ -8,6 +8,8 @@
 
 **A lightweight Android launcher for Minecraft: Bedrock Edition — LEVI LAUNCHER LICENSE CHECK REMOVE**
 
+**Some Bugs will take a while to fix because this modded Levi Launcher is maintained by a single person**
+
 [![GitHub Release](https://img.shields.io/github/v/release/LiteLDev/LeviLaunchroid?style=flat-square&color=blue)](https://github.com/LiteLDev/LeviLaunchroid/releases)
 [![License: Apache 2.0](https://img.shields.io/github/license/LiteLDev/LeviLaunchroid)](https://github.com/LiteLDev/LeviLaunchroid/blob/main/LICENSE)
 [![Issues](https://img.shields.io/github/issues/LiteLDev/LeviLaunchroid?style=flat-square&color=red)](https://github.com/LiteLDev/LeviLaunchroid/issues)
