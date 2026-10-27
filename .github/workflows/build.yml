@@ -1,14 +1,6 @@
 name: Build APK
 
 on:
-  push:
-    branches:
-      - "**"
-    tags:
-      - v*
-  pull_request:
-    branches:
-      - "**"
   workflow_dispatch:
 
 jobs:
@@ -77,10 +69,9 @@ jobs:
           distribution: temurin
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Licenses
-        run: yes | sdkmanager --licenses
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
 
       - name: Install Build Tools 35.0.0
         run: sdkmanager "build-tools;35.0.0"
@@ -104,9 +95,28 @@ jobs:
       - name: Inject API Keys
         env:
           CF_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
-        run: echo "curseforge.api_key=${CF_API_KEY}" >> local.properties
+        run: |
+          set -euo pipefail
+          if [ -z "${CF_API_KEY:-}" ]; then
+            echo "::error::CURSEFORGE_API_KEY secret is missing."
+            exit 1
+          fi
+          touch local.properties
+          printf 'curseforge.api_key=%s\n' "$CF_API_KEY" >> local.properties
 
-      - name: Build Debug and Unsigned Release APKs
+      - name: Decode Release Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is missing."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/levi-release.jks"
+          test -s "$RUNNER_TEMP/levi-release.jks"
+
+      - name: Build Debug and Release APKs
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m"
         run: >
@@ -115,14 +125,42 @@ jobs:
           -x uploadCrashlyticsSymbolFileRelease
           --stacktrace
 
+      - name: Sign Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${KEYSTORE_PASSWORD:-}" || { echo "::error::ANDROID_KEYSTORE_PASSWORD secret is missing."; exit 1; }
+          test -n "${KEY_ALIAS:-}" || { echo "::error::ANDROID_KEY_ALIAS secret is missing."; exit 1; }
+          test -n "${KEY_PASSWORD:-}" || { echo "::error::ANDROID_KEY_PASSWORD secret is missing."; exit 1; }
+
+          unsigned_apk="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit)"
+          if [ -z "$unsigned_apk" ]; then
+            echo "::error::Gradle did not produce an unsigned release APK."
+            exit 1
+          fi
+
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$apksigner"
+          "$apksigner" sign \
+            --ks "$RUNNER_TEMP/levi-release.jks" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --key-pass env:KEY_PASSWORD \
+            --out app/build/outputs/apk/release/LeviLauncher-release.apk \
+            "$unsigned_apk"
+          "$apksigner" verify --verbose app/build/outputs/apk/release/LeviLauncher-release.apk
+
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4.6.2
         with:
           name: LeviLauncher-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Upload Unsigned Release APK
+      - name: Upload Signed Release APK
         uses: actions/upload-artifact@v4.6.2
         with:
-          name: LeviLauncher-release-unsigned-apk
-          path: app/build/outputs/apk/release/*-unsigned.apk
+          name: LeviLauncher-release-signed-apk
+          path: app/build/outputs/apk/release/LeviLauncher-release.apk
