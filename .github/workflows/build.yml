@@ -14,12 +14,6 @@ on:
 jobs:
   android:
     runs-on: ubuntu-latest
-    env:
-      CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -107,15 +101,12 @@ jobs:
       - name: Grant Execute Permission to gradlew
         run: chmod +x ./gradlew
 
-      - name: Inject CurseForge API Key
-        run: |
-          set -euo pipefail
-          printf 'curseforge.api_key=%s\n' "${CURSEFORGE_API_KEY:-}" >> local.properties
-          if [ -z "${CURSEFORGE_API_KEY:-}" ]; then
-            echo "::warning::CURSEFORGE_API_KEY secret is not configured; CurseForge API requests may fail."
-          fi
+      - name: Inject API Keys
+        env:
+          CF_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+        run: echo "curseforge.api_key=${CF_API_KEY}" >> local.properties
 
-      - name: Build Debug and Release APKs
+      - name: Build Debug and Unsigned Release APKs
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m"
         run: >
@@ -124,58 +115,14 @@ jobs:
           -x uploadCrashlyticsSymbolFileRelease
           --stacktrace
 
-      - name: Sign Release APK
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          test -n "${KEYSTORE_PASSWORD}" || { echo "::error::ANDROID_KEYSTORE_PASSWORD secret is missing"; exit 1; }
-          test -n "${KEY_ALIAS}" || { echo "::error::ANDROID_KEY_ALIAS secret is missing"; exit 1; }
-          test -n "${KEY_PASSWORD}" || { echo "::error::ANDROID_KEY_PASSWORD secret is missing"; exit 1; }
-
-          KEYSTORE_FILE="$RUNNER_TEMP/levi-release.jks"
-          UNSIGNED_APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit)"
-          test -n "$UNSIGNED_APK" || { echo "::error::Unsigned release APK was not found"; exit 1; }
-
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-          chmod 600 "$KEYSTORE_FILE"
-
-          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
-          ALIGNED_APK="$RUNNER_TEMP/LeviLauncher-release-aligned.apk"
-          SIGNED_APK="app/build/outputs/apk/release/LeviLauncher-release.apk"
-
-          "$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED_APK" "$ALIGNED_APK"
-          "$BUILD_TOOLS/apksigner" sign \
-            --ks "$KEYSTORE_FILE" \
-            --ks-key-alias "$KEY_ALIAS" \
-            --ks-pass env:KEYSTORE_PASSWORD \
-            --key-pass env:KEY_PASSWORD \
-            --out "$SIGNED_APK" \
-            "$ALIGNED_APK"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$SIGNED_APK"
-          rm -f "$KEYSTORE_FILE" "$ALIGNED_APK"
-
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4.6.2
         with:
           name: LeviLauncher-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Upload Signed Release APK
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: LeviLauncher-release-signed-apk
-          path: app/build/outputs/apk/release/LeviLauncher-release.apk
-          if-no-files-found: error
-
-      - name: Upload Unsigned Release APK (signing secrets unavailable)
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 == '' }}
+      - name: Upload Unsigned Release APK
         uses: actions/upload-artifact@v4.6.2
         with:
           name: LeviLauncher-release-unsigned-apk
           path: app/build/outputs/apk/release/*-unsigned.apk
-          if-no-files-found: error
