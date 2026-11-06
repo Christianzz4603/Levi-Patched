@@ -227,7 +227,7 @@ jobs:
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m"
         run: |
-          ./gradlew assembleDebug assembleRelease \\
+          ./gradlew assembleDebug assembleRelease \
             -Pdiscord.application_id=0 \
             -x uploadCrashlyticsSymbolFileDebug \
             -x uploadCrashlyticsSymbolFileRelease \
