@@ -135,6 +135,52 @@ jobs:
       - name: Grant Execute Permission
         run: chmod +x ./gradlew
 
+
+      # ==========================================
+      # OPTIONAL DISCORD INTEGRATION
+      # ==========================================
+
+      - name: Disable unavailable Discord SDK
+        run: |
+          set -euo pipefail
+
+          # The official Discord Social SDK AAR is distributed privately by upstream.
+          # This CI build does not have that private dependency, so disable Rich Presence.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle_file = Path("app/build.gradle")
+          gradle = gradle_file.read_text()
+          dependency = "    implementation files('libs/discord_partner_sdk.aar')\\n"
+          if dependency not in gradle:
+              raise SystemExit("Expected Discord SDK dependency was not found in app/build.gradle")
+          gradle_file.write_text(gradle.replace(dependency, "", 1))
+
+          presence_file = Path("app/src/main/java/org/levimc/launcher/core/discord/DiscordPresence.java")
+          presence_file.write_text("""package org.levimc.launcher.core.discord;
+
+          import android.app.Application;
+
+          /**
+           * CI fallback used when the upstream private Discord Social SDK is unavailable.
+           * Discord Rich Presence is intentionally disabled in this build.
+           */
+          public final class DiscordPresence {
+              private DiscordPresence() {}
+
+              public static void initialize(Application application) {}
+
+              public static boolean isConfigured() {
+                  return false;
+              }
+
+              public static void refresh() {}
+
+              public static void shutdown() {}
+          }
+          """)
+          PY
+
       # ==========================================
       # API CONFIGURATION
       # ==========================================
@@ -181,7 +227,8 @@ jobs:
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m"
         run: |
-          ./gradlew assembleDebug assembleRelease \
+          ./gradlew assembleDebug assembleRelease \\
+            -Pdiscord.application_id=0 \
             -x uploadCrashlyticsSymbolFileDebug \
             -x uploadCrashlyticsSymbolFileRelease \
             --stacktrace
