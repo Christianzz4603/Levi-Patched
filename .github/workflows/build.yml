@@ -1,17 +1,60 @@
-name: Build APK
+name: Build APK & Create Release
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   android:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: "recursive"
+          submodules: recursive
+
+      # ==========================================
+      # FETCH OFFICIAL LEVILAUNCHER TAGS
+      # ==========================================
+
+      - name: Fetch Latest Official LeviLauncher Tag
+        id: levi-version
+        run: |
+          set -euo pipefail
+
+          UPSTREAM="https://github.com/LiteLDev/LeviLaunchroid.git"
+
+          git fetch "$UPSTREAM" \
+            '+refs/tags/*:refs/tags/upstream/*'
+
+          LATEST_TAG="$(
+            git tag -l 'upstream/v*' |
+            sed 's#^upstream/##' |
+            sort -V |
+            tail -n 1
+          )"
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "::error::No official LeviLauncher version tags found."
+            exit 1
+          fi
+
+          echo "Latest official LeviLauncher version: $LATEST_TAG"
+
+          # Apply the official version tag to our current patched commit.
+          # This allows Gradle's Git-based version detection to recognize it.
+          git tag -f "$LATEST_TAG" "$GITHUB_SHA"
+
+          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${LATEST_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # ==========================================
+      # FIREBASE CONFIGURATION
+      # ==========================================
 
       - name: Prepare google-services.json
         env:
@@ -21,15 +64,11 @@ jobs:
           mkdir -p app
 
           if [ -n "${GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
-            printf '%s' "${GOOGLE_SERVICES_JSON_BASE64}" | base64 --decode > app/google-services.json
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" |
+              base64 --decode > app/google-services.json
             exit 0
           fi
 
-          # No real Firebase project configured - write a placeholder just
-          # so the google-services Gradle plugin has a file to parse. The
-          # Crashlytics symbol-upload tasks (which would otherwise fail
-          # against a fake project) are excluded in the build step below,
-          # so this is enough to produce a working APK without any secret.
           cat > app/google-services.json <<'JSON'
           {
             "project_info": {
@@ -62,6 +101,10 @@ jobs:
           }
           JSON
 
+      # ==========================================
+      # ANDROID BUILD ENVIRONMENT
+      # ==========================================
+
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
@@ -71,9 +114,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools'
+          packages: platform-tools
 
-      - name: Install Build Tools 35.0.0
+      - name: Install Build Tools
         run: sdkmanager "build-tools;35.0.0"
 
       - name: Setup Xmake
@@ -89,41 +132,63 @@ jobs:
           ndk-version: r28c
           link-to-sdk: true
 
-      - name: Grant Execute Permission to gradlew
+      - name: Grant Execute Permission
         run: chmod +x ./gradlew
+
+      # ==========================================
+      # API CONFIGURATION
+      # ==========================================
 
       - name: Inject API Keys
         env:
           CF_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
         run: |
           set -euo pipefail
+
           if [ -z "${CF_API_KEY:-}" ]; then
             echo "::error::CURSEFORGE_API_KEY secret is missing."
             exit 1
           fi
+
           touch local.properties
           printf 'curseforge.api_key=%s\n' "$CF_API_KEY" >> local.properties
+
+      # ==========================================
+      # RELEASE SIGNING
+      # ==========================================
 
       - name: Decode Release Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
+
           if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
             echo "::error::ANDROID_KEYSTORE_BASE64 secret is missing."
             exit 1
           fi
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/levi-release.jks"
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" |
+            base64 --decode > "$RUNNER_TEMP/levi-release.jks"
+
           test -s "$RUNNER_TEMP/levi-release.jks"
+
+      # ==========================================
+      # BUILD APKs
+      # ==========================================
 
       - name: Build Debug and Release APKs
         env:
           GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m"
-        run: >
-          ./gradlew assembleDebug assembleRelease
-          -x uploadCrashlyticsSymbolFileDebug
-          -x uploadCrashlyticsSymbolFileRelease
-          --stacktrace
+        run: |
+          ./gradlew assembleDebug assembleRelease \
+            -x uploadCrashlyticsSymbolFileDebug \
+            -x uploadCrashlyticsSymbolFileRelease \
+            --stacktrace
+
+      # ==========================================
+      # SIGN RELEASE APK
+      # ==========================================
 
       - name: Sign Release APK
         env:
@@ -132,35 +197,74 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          test -n "${KEYSTORE_PASSWORD:-}" || { echo "::error::ANDROID_KEYSTORE_PASSWORD secret is missing."; exit 1; }
-          test -n "${KEY_ALIAS:-}" || { echo "::error::ANDROID_KEY_ALIAS secret is missing."; exit 1; }
-          test -n "${KEY_PASSWORD:-}" || { echo "::error::ANDROID_KEY_PASSWORD secret is missing."; exit 1; }
 
-          unsigned_apk="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit)"
+          test -n "${KEYSTORE_PASSWORD:-}" || {
+            echo "::error::ANDROID_KEYSTORE_PASSWORD is missing."
+            exit 1
+          }
+
+          test -n "${KEY_ALIAS:-}" || {
+            echo "::error::ANDROID_KEY_ALIAS is missing."
+            exit 1
+          }
+
+          test -n "${KEY_PASSWORD:-}" || {
+            echo "::error::ANDROID_KEY_PASSWORD is missing."
+            exit 1
+          }
+
+          unsigned_apk="$(find app/build/outputs/apk/release \
+            -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit)"
+
           if [ -z "$unsigned_apk" ]; then
-            echo "::error::Gradle did not produce an unsigned release APK."
+            echo "::error::Unsigned release APK not found."
             exit 1
           fi
 
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          test -x "$apksigner"
+
           "$apksigner" sign \
             --ks "$RUNNER_TEMP/levi-release.jks" \
             --ks-key-alias "$KEY_ALIAS" \
             --ks-pass env:KEYSTORE_PASSWORD \
             --key-pass env:KEY_PASSWORD \
-            --out app/build/outputs/apk/release/LeviLauncher-release.apk \
+            --out LeviLauncher-${{ steps.levi-version.outputs.version }}-release.apk \
             "$unsigned_apk"
-          "$apksigner" verify --verbose app/build/outputs/apk/release/LeviLauncher-release.apk
+
+          "$apksigner" verify --verbose \
+            LeviLauncher-${{ steps.levi-version.outputs.version }}-release.apk
+
+      # ==========================================
+      # UPLOAD BUILD ARTIFACTS
+      # ==========================================
 
       - name: Upload Debug APK
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: LeviLauncher-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
       - name: Upload Signed Release APK
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: LeviLauncher-release-signed-apk
-          path: app/build/outputs/apk/release/LeviLauncher-release.apk
+          path: LeviLauncher-*-release.apk
+
+      # ==========================================
+      # CREATE GITHUB RELEASE
+      # ==========================================
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.levi-version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: LeviLauncher ${{ steps.levi-version.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          overwrite_files: true
+          files: |
+            LeviLauncher-*-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
