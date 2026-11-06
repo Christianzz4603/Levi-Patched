@@ -151,7 +151,7 @@ jobs:
 
           gradle_file = Path("app/build.gradle")
           gradle = gradle_file.read_text()
-          dependency = "    implementation files('libs/discord_partner_sdk.aar')\\n"
+          dependency = "    implementation files('libs/discord_partner_sdk.aar')\n"
           if dependency not in gradle:
               raise SystemExit("Expected Discord SDK dependency was not found in app/build.gradle")
           gradle_file.write_text(gradle.replace(dependency, "", 1))
