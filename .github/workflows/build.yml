@@ -179,6 +179,20 @@ jobs:
               public static void shutdown() {}
           }
           """)
+
+          # Force the preference off even if an old saved settings file had it enabled.
+          settings_file = Path("app/src/main/java/org/levimc/launcher/settings/FeatureSettings.java")
+          settings = settings_file.read_text()
+          replacements = {
+              "private boolean discordRichPresenceEnabled = true;": "private boolean discordRichPresenceEnabled = false;",
+              "public boolean isDiscordRichPresenceEnabled() { return discordRichPresenceEnabled; }": "public boolean isDiscordRichPresenceEnabled() { return false; }",
+              "public void setDiscordRichPresenceEnabled(boolean enabled) { this.discordRichPresenceEnabled = enabled; autoSave(); }": "public void setDiscordRichPresenceEnabled(boolean enabled) { /* Disabled in this build. */ }",
+          }
+          for before, after in replacements.items():
+              if settings.count(before) != 1:
+                  raise SystemExit(f"Expected exactly one Rich Presence setting match, got {settings.count(before)}: {before}")
+              settings = settings.replace(before, after, 1)
+          settings_file.write_text(settings)
           PY
 
       # ==========================================
